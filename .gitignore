@@ -1,0 +1,10 @@
+bin/
+obj/
+*.user
+*.suo
+*.binlog
+.vs/
+.idea/
+*.swp
+publish/
+out/
