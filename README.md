@@ -19,10 +19,10 @@ Click into any text field, hit the hotkey, and start talking. Every time you pau
 
 A floating black-glass HUD sits at the bottom of the screen showing live audio bars while it listens.
 
-| Platform | Hotkey |
-|---|---|
-| Windows | `Ctrl+Shift+Alt+Space` |
-| macOS | `Ctrl+Option+Shift+Space` |
+| Platform | Toggle (tap once = start, tap again = stop) | Hold (press & hold to talk, release to commit) |
+|---|---|---|
+| Windows | `Ctrl+Shift+Alt+Space` | `Ctrl+Alt+Space` |
+| macOS | `Ctrl+Option+Shift+Space` | `Ctrl+Option+Space` |
 
 ## Features
 
@@ -32,6 +32,9 @@ A floating black-glass HUD sits at the bottom of the screen showing live audio b
 | **Cross-platform** | Single .NET 8 codebase runs natively on Windows and macOS via Avalonia + SharpHook + Silk.NET.OpenAL. |
 | **GPU-accelerated** | Metal on Apple Silicon, CUDA on Windows (when present). Falls back to CPU automatically. |
 | **High-quality, fast model** | Defaults to `large-v3-turbo` Q5_0 (~600 MB) — near-`large-v3` quality at a fraction of the latency. |
+| **Live partial preview** | Italic gray text shows what Whisper is hearing in near real-time, before the phrase commits. Visible feedback while you're still talking. |
+| **Toggle + hold modes** | Tap the hotkey for hands-free toggle, or use the second hotkey to push-to-talk like a walkie-talkie. |
+| **Auto-cap + auto-punctuate** | First letter of each sentence is capitalized; missing terminal punctuation is filled in. Tracks sentence state across phrases. |
 | **Phrase chunking** | Energy-based VAD detects pauses and commits phrases as you speak — no waiting for a long monologue to end. |
 | **Universal target** | Types Unicode into any app via OS-native input simulation. |
 | **Custom HUD** | Animated 5-bar audio meter driven by real-time mic level. |
@@ -110,9 +113,16 @@ The HUD is draggable. The `✕` hides it (still running in tray). To exit fully,
 ## How it works
 
 1. **Capture.** [Silk.NET.OpenAL](https://github.com/dotnet/Silk.NET) (with bundled OpenAL Soft natives) streams 16 kHz mono PCM from the default mic.
-2. **VAD.** A simple RMS-based energy gate detects speech vs. silence. After ≥300 ms of speech followed by ≥650 ms of silence (or 12 s max), the buffered audio is emitted as a phrase.
-3. **Transcribe.** [whisper.net](https://github.com/sandrohanea/whisper.net) runs the `large-v3-turbo` Q5_0 GGML model with hardware acceleration (Metal on macOS, CUDA on Windows when available). Samples are passed as `float[]` directly to skip WAV (re)parsing. Each phrase is processed independently for lower latency and fewer hallucinations.
-4. **Inject.** Transcribed text is sent to the focused app via [SharpHook](https://github.com/TolikPylypchuk/SharpHook)'s `EventSimulator.SimulateTextEntry` — Win32 `SendInput` with `KEYEVENTF_UNICODE` on Windows, `CGEventKeyboardSetUnicodeString` on macOS.
+2. **VAD.** A simple RMS-based energy gate detects speech vs. silence. After ≥280 ms of speech followed by ≥550 ms of silence (or 12 s max), the buffered audio is emitted as a phrase.
+3. **Live partial.** While you're still mid-phrase, the controller throttle-fires partial inferences (~700 ms cadence, ~250 ms minimum gap). Each new partial cancels the in-flight one. Result is shown as italic muted preview text — typed-out text only happens on commit.
+4. **Transcribe.** [whisper.net](https://github.com/sandrohanea/whisper.net) runs the `large-v3-turbo` Q5_0 GGML model with hardware acceleration (Metal on macOS, CUDA on Windows when available). Samples are passed as `float[]` directly to skip WAV (re)parsing.
+5. **Normalize.** [TextNormalizer](Stt/TextNormalizer.cs) capitalizes sentence starts and adds missing terminal punctuation, tracking the previous phrase's last char to know what counts as "next sentence."
+6. **Inject.** Final text is sent to the focused app via [SharpHook](https://github.com/TolikPylypchuk/SharpHook)'s `EventSimulator.SimulateTextEntry` — Win32 `SendInput` with `KEYEVENTF_UNICODE` on Windows, `CGEventKeyboardSetUnicodeString` on macOS.
+
+### Toggle vs hold
+
+- **Toggle** mode is for paragraphs and long-form: tap once to start, tap again to stop. While "active," the HUD listens until you tell it to stop.
+- **Hold** mode is for short bursts: press and hold the hold-hotkey, talk, release. Releasing any of the modifier keys (or Space) ends the session and commits the final phrase. The hold and toggle bindings can't conflict (the controller refuses to toggle during a hold and vice versa).
 
 ## Configuration
 

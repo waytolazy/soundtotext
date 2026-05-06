@@ -28,6 +28,7 @@ public partial class MainWindow : Window
 
     private TextBlock? _statusA;
     private TextBlock? _statusB;
+    private TextBlock? _partialText;
     private bool _statusUsesA = true;
 
     private Border? _glassRoot;
@@ -74,6 +75,7 @@ public partial class MainWindow : Window
         };
         _statusA = this.FindControl<TextBlock>("StatusTextA");
         _statusB = this.FindControl<TextBlock>("StatusTextB");
+        _partialText = this.FindControl<TextBlock>("PartialText");
         _glassRoot = this.FindControl<Border>("GlassRoot");
         _halo = this.FindControl<Ellipse>("HaloLayer");
         _ripple = this.FindControl<Ellipse>("RippleLayer");
@@ -120,6 +122,8 @@ public partial class MainWindow : Window
             return;
         }
 
+        HidePartial();
+
         if (text != null) SetStatusText(text);
 
         if (_state == status) return;
@@ -129,6 +133,31 @@ public partial class MainWindow : Window
         _ = PlayStatePulse();
         if (status == HudStatus.Error) _ = PlayErrorShakeAndAutoFade();
         if (status == HudStatus.Listening && prev != HudStatus.Listening) _ = PlayCascade();
+    }
+
+    public void SetPartial(string text)
+    {
+        if (!Dispatcher.UIThread.CheckAccess())
+        {
+            Dispatcher.UIThread.Post(() => SetPartial(text));
+            return;
+        }
+        if (_partialText == null || _statusA == null || _statusB == null) return;
+        if (string.IsNullOrWhiteSpace(text)) { HidePartial(); return; }
+
+        _statusA.Opacity = 0;
+        _statusB.Opacity = 0;
+        _partialText.Text = text + "…";
+        _partialText.Opacity = 0.75;
+    }
+
+    private void HidePartial()
+    {
+        if (_partialText == null) return;
+        _partialText.Opacity = 0;
+        _partialText.Text = "";
+        if (_statusUsesA && _statusA != null) _statusA.Opacity = 1;
+        else if (!_statusUsesA && _statusB != null) _statusB.Opacity = 1;
     }
 
     public void OnPhraseCommitted()

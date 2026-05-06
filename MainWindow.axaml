@@ -139,6 +139,12 @@
                                        FontSize="11" Margin="0,2,8,0"
                                        TextTrimming="CharacterEllipsis"
                                        Opacity="0"/>
+                            <TextBlock x:Name="PartialText" Text=""
+                                       Foreground="{StaticResource MutedBrush}"
+                                       FontSize="11" Margin="0,2,8,0"
+                                       FontStyle="Italic"
+                                       TextTrimming="CharacterEllipsis"
+                                       Opacity="0"/>
                         </Grid>
                     </StackPanel>
                 </Grid>

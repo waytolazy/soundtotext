@@ -36,7 +36,12 @@ public sealed unsafe class MicCapture : IDisposable
     private readonly Queue<short> _preRoll = new(SampleRate);
 
     public event Action<float[]>? PhraseReady;
+    public event Action<float[]>? PartialAvailable;
     public event Action<float>? LevelUpdated;
+
+    private const int PartialIntervalMs = 700;
+    private const int PartialMinSpeechMs = 350;
+    private long _lastPartialTickMs;
 
     public void Start()
     {
@@ -118,6 +123,7 @@ public sealed unsafe class MicCapture : IDisposable
         _phraseSpeechMs = 0;
         _phraseTotalMs = 0;
         _inSpeech = false;
+        _lastPartialTickMs = 0;
     }
 
     private void PollLoop(CancellationToken ct)
@@ -215,6 +221,15 @@ public sealed unsafe class MicCapture : IDisposable
                 _phraseTotalMs = 0;
                 _inSpeech = false;
             }
+            else if (_phraseSpeechMs >= PartialMinSpeechMs)
+            {
+                var now = Environment.TickCount64;
+                if (now - _lastPartialTickMs >= PartialIntervalMs)
+                {
+                    _lastPartialTickMs = now;
+                    EmitPartial();
+                }
+            }
         }
     }
 
@@ -226,10 +241,23 @@ public sealed unsafe class MicCapture : IDisposable
     private void EmitPhrase()
     {
         var pcm = _buffer.ToArray();
-        var floats = new float[pcm.Length];
-        const float scale = 1f / 32768f;
-        for (int i = 0; i < pcm.Length; i++) floats[i] = pcm[i] * scale;
+        var floats = ToFloats(pcm);
         ThreadPool.QueueUserWorkItem(_ => PhraseReady?.Invoke(floats));
+    }
+
+    private void EmitPartial()
+    {
+        var pcm = _buffer.ToArray();
+        var floats = ToFloats(pcm);
+        ThreadPool.QueueUserWorkItem(_ => PartialAvailable?.Invoke(floats));
+    }
+
+    private static float[] ToFloats(short[] pcm)
+    {
+        var f = new float[pcm.Length];
+        const float scale = 1f / 32768f;
+        for (int i = 0; i < pcm.Length; i++) f[i] = pcm[i] * scale;
+        return f;
     }
 
     private static double ComputeRms(short[] buf, int count)

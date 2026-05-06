@@ -60,8 +60,10 @@ public partial class App : Application
             _mic.LevelUpdated += level => _hud!.OnLevel(level);
 
             _hotkey.Tap += () => _ = _controller.ToggleAsync();
+            _hotkey.HoldStart += () => _controller.HoldStart();
+            _hotkey.HoldStop  += () => _controller.HoldStop();
             _hotkey.Register();
-            Logger.Log($"Hotkey bound: {_hotkey.ActiveBindingLabel}");
+            Logger.Log($"Hotkey bound: toggle={_hotkey.ActiveBindingLabel}, hold={_hotkey.HoldBindingLabel}");
 
             if (OperatingSystem.IsMacOS() && !MacPermissions.IsAccessibilityTrusted())
             {
@@ -73,7 +75,7 @@ public partial class App : Application
                 return;
             }
 
-            _hud.SetStatus(HudStatus.Idle, $"Ready  ·  {_hotkey.ActiveBindingLabel}");
+            _hud.SetStatus(HudStatus.Idle, $"Ready  ·  {_hotkey.ActiveBindingLabel}  ·  {_hotkey.HoldBindingLabel}");
         }
         catch (Exception ex)
         {
