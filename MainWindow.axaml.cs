@@ -435,20 +435,6 @@ public partial class MainWindow : Window
             SetStatus(HudStatus.Idle, "Ready");
     }
 
-    private void OnHudPointerEntered(object? sender, PointerEventArgs e)
-    {
-        if (_glassRoot == null || _glassTranslate == null) return;
-        _glassRoot.BoxShadow = BoxShadows.Parse("0 4 22 0 #99000000");
-        _ = AnimateTranslate(_glassTranslate, 0, -2, 140);
-    }
-
-    private void OnHudPointerExited(object? sender, PointerEventArgs e)
-    {
-        if (_glassRoot == null || _glassTranslate == null) return;
-        _glassRoot.BoxShadow = BoxShadows.Parse("0 0 14 0 #73000000");
-        _ = AnimateTranslate(_glassTranslate, 0, 0, 140);
-    }
-
     private static async Task AnimateOpacity(Visual target, double to, int durationMs)
     {
         var from = target.Opacity;
@@ -462,22 +448,6 @@ public partial class MainWindow : Window
             await Task.Delay(perFrame);
         }
         target.Opacity = to;
-    }
-
-    private static async Task AnimateTranslate(TranslateTransform tr, double toX, double toY, int durationMs)
-    {
-        var fromX = tr.X; var fromY = tr.Y;
-        const int frames = 10;
-        var perFrame = Math.Max(8, durationMs / frames);
-        for (int i = 0; i <= frames; i++)
-        {
-            var t = i / (double)frames;
-            var eased = 1 - Math.Pow(1 - t, 3);
-            tr.X = fromX + (toX - fromX) * eased;
-            tr.Y = fromY + (toY - fromY) * eased;
-            await Task.Delay(perFrame);
-        }
-        tr.X = toX; tr.Y = toY;
     }
 
     private static async Task AnimateBarColor(Rectangle bar, Color toColor, int durationMs, Color? fromOverride = null)

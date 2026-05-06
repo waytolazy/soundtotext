@@ -37,6 +37,21 @@
         <Style Selector="Button.HudClose:pointerover /template/ ContentPresenter">
             <Setter Property="Background" Value="Transparent"/>
         </Style>
+
+        <Style Selector="Border#GlassRoot">
+            <Setter Property="Margin" Value="14,14,14,14"/>
+            <Setter Property="BoxShadow" Value="0 0 14 0 #73000000"/>
+            <Setter Property="Transitions">
+                <Transitions>
+                    <ThicknessTransition Property="Margin" Duration="0:0:0.14"/>
+                    <BoxShadowsTransition Property="BoxShadow" Duration="0:0:0.14"/>
+                </Transitions>
+            </Setter>
+        </Style>
+        <Style Selector="Border#GlassRoot:pointerover">
+            <Setter Property="Margin" Value="14,12,14,16"/>
+            <Setter Property="BoxShadow" Value="0 4 22 0 #99000000"/>
+        </Style>
     </Window.Styles>
 
     <Grid>
@@ -45,11 +60,7 @@
                 BorderBrush="{StaticResource GlassStroke}"
                 BorderThickness="1"
                 RenderTransformOrigin="50%,50%"
-                Margin="14"
-                BoxShadow="0 0 14 0 #73000000"
-                PointerPressed="OnDragStart"
-                PointerEntered="OnHudPointerEntered"
-                PointerExited="OnHudPointerExited">
+                PointerPressed="OnDragStart">
             <Border.Background>
                 <LinearGradientBrush StartPoint="0%,0%" EndPoint="0%,100%">
                     <GradientStop Color="#F50A0A0C" Offset="0"/>
