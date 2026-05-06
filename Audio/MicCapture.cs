@@ -39,8 +39,8 @@ public sealed unsafe class MicCapture : IDisposable
     public event Action<float[]>? PartialAvailable;
     public event Action<float>? LevelUpdated;
 
-    private const int PartialIntervalMs = 1500;
-    private const int PartialMinSpeechMs = 600;
+    private const int PartialIntervalMs = 400;
+    private const int PartialMinSpeechMs = 400;
     private long _lastPartialTickMs;
 
     private const int LevelIntervalMs = 33;

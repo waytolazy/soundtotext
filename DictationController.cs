@@ -118,7 +118,7 @@ public sealed class DictationController
         {
             try
             {
-                var text = await _whisper.TranscribeAsync(capped);
+                var text = await _whisper.TranscribePartialAsync(capped);
                 if (!string.IsNullOrWhiteSpace(text))
                     _hud.SetPartial(text);
             }

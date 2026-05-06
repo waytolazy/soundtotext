@@ -140,11 +140,16 @@
                                        TextTrimming="CharacterEllipsis"
                                        Opacity="0"/>
                             <TextBlock x:Name="PartialText" Text=""
-                                       Foreground="{StaticResource MutedBrush}"
+                                       Foreground="{StaticResource AccentBrush}"
                                        FontSize="11" Margin="0,2,8,0"
                                        FontStyle="Italic"
                                        TextTrimming="CharacterEllipsis"
-                                       Opacity="0"/>
+                                       Opacity="0"
+                                       RenderTransformOrigin="0%,50%">
+                                <TextBlock.RenderTransform>
+                                    <TranslateTransform X="0" Y="0"/>
+                                </TextBlock.RenderTransform>
+                            </TextBlock>
                         </Grid>
                     </StackPanel>
                 </Grid>

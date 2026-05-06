@@ -135,6 +135,8 @@ public partial class MainWindow : Window
         if (status == HudStatus.Listening && prev != HudStatus.Listening) _ = PlayCascade();
     }
 
+    private string _lastPartial = "";
+
     public void SetPartial(string text)
     {
         if (!Dispatcher.UIThread.CheckAccess())
@@ -147,8 +149,44 @@ public partial class MainWindow : Window
 
         _statusA.Opacity = 0;
         _statusB.Opacity = 0;
+
+        bool grew = text.StartsWith(_lastPartial, StringComparison.Ordinal)
+                    && text.Length > _lastPartial.Length
+                    && _lastPartial.Length > 0;
+        _lastPartial = text;
         _partialText.Text = text + "…";
-        _partialText.Opacity = 0.75;
+
+        _ = AnimatePartialIn(grew);
+    }
+
+    private async Task AnimatePartialIn(bool grew)
+    {
+        if (_partialText == null) return;
+        var tr = _partialText.RenderTransform as TranslateTransform;
+
+        var startX = grew ? 6.0 : 0.0;
+        var startY = grew ? 0.0 : 4.0;
+        var startOp = grew ? 0.55 : 0.30;
+
+        if (tr != null) { tr.X = startX; tr.Y = startY; }
+        _partialText.Opacity = startOp;
+
+        const int frames = 9;
+        const int frameMs = 14;
+        for (int i = 0; i <= frames; i++)
+        {
+            var t = i / (double)frames;
+            var eased = 1 - Math.Pow(1 - t, 3);
+            if (tr != null)
+            {
+                tr.X = startX * (1 - eased);
+                tr.Y = startY * (1 - eased);
+            }
+            _partialText.Opacity = startOp + (0.95 - startOp) * eased;
+            await Task.Delay(frameMs);
+        }
+        if (tr != null) { tr.X = 0; tr.Y = 0; }
+        _partialText.Opacity = 0.95;
     }
 
     private void HidePartial()
@@ -156,6 +194,7 @@ public partial class MainWindow : Window
         if (_partialText == null) return;
         _partialText.Opacity = 0;
         _partialText.Text = "";
+        _lastPartial = "";
         if (_statusUsesA && _statusA != null) _statusA.Opacity = 1;
         else if (!_statusUsesA && _statusB != null) _statusB.Opacity = 1;
     }
