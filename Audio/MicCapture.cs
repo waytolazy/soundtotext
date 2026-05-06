@@ -39,9 +39,12 @@ public sealed unsafe class MicCapture : IDisposable
     public event Action<float[]>? PartialAvailable;
     public event Action<float>? LevelUpdated;
 
-    private const int PartialIntervalMs = 700;
-    private const int PartialMinSpeechMs = 350;
+    private const int PartialIntervalMs = 1500;
+    private const int PartialMinSpeechMs = 600;
     private long _lastPartialTickMs;
+
+    private const int LevelIntervalMs = 33;
+    private long _lastLevelTickMs;
 
     public void Start()
     {
@@ -173,7 +176,12 @@ public sealed unsafe class MicCapture : IDisposable
         var rms = ComputeRms(buf, sampleCount);
         bool speech = rms >= RmsSpeechThreshold;
         var level = (float)Math.Min(1.0, rms / 3500.0);
-        LevelUpdated?.Invoke(level);
+        var nowMs = Environment.TickCount64;
+        if (nowMs - _lastLevelTickMs >= LevelIntervalMs)
+        {
+            _lastLevelTickMs = nowMs;
+            LevelUpdated?.Invoke(level);
+        }
 
         lock (_lock)
         {

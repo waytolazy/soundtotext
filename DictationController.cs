@@ -27,9 +27,8 @@ public sealed class DictationController
     private CancellationTokenSource? _workerCts;
     private Task? _workerTask;
 
-    private CancellationTokenSource? _partialCts;
-    private long _lastPartialDispatchMs;
-    private const int PartialMinDispatchGapMs = 250;
+    private int _partialBusy;
+    private const int PartialMaxSamples = MicCapture.SampleRate * 3;
 
     public DictationController(MicCapture mic, WhisperEngine whisper, KeystrokeInjector injector,
         MainWindow hud, TrayManager? tray = null)
@@ -91,8 +90,6 @@ public sealed class DictationController
     {
         if (!_holdActive) _toggleActive = false;
         _mic.Stop();
-        _partialCts?.Cancel();
-        _partialCts = null;
         _workerCts?.Cancel();
         _workerCts = null;
         _tray?.StopAnimation();
@@ -102,30 +99,31 @@ public sealed class DictationController
     private void OnPhraseReady(float[] samples)
     {
         Interlocked.Increment(ref _phrasesPending);
-        _partialCts?.Cancel();
         _queue.Add(samples);
     }
 
     private void OnPartialAvailable(float[] samples)
     {
-        var now = Environment.TickCount64;
-        if (now - _lastPartialDispatchMs < PartialMinDispatchGapMs) return;
-        _lastPartialDispatchMs = now;
+        // Drop if a previous partial is still running OR Whisper is busy with a final.
+        if (Interlocked.CompareExchange(ref _partialBusy, 1, 0) != 0) return;
+        if (_whisper.IsBusy) { Interlocked.Exchange(ref _partialBusy, 0); return; }
 
-        _partialCts?.Cancel();
-        var cts = new CancellationTokenSource();
-        _partialCts = cts;
+        // Only transcribe the most recent N seconds — partials are visual feedback,
+        // not a substitute for the final commit.
+        var capped = samples.Length > PartialMaxSamples
+            ? samples.AsSpan(samples.Length - PartialMaxSamples).ToArray()
+            : samples;
+
         _ = Task.Run(async () =>
         {
             try
             {
-                var text = await _whisper.TranscribeAsync(samples, cts.Token);
-                if (cts.IsCancellationRequested) return;
+                var text = await _whisper.TranscribeAsync(capped);
                 if (!string.IsNullOrWhiteSpace(text))
                     _hud.SetPartial(text);
             }
-            catch (OperationCanceledException) { }
             catch (Exception ex) { Logger.Ex("Partial", ex); }
+            finally { Interlocked.Exchange(ref _partialBusy, 0); }
         });
     }
 

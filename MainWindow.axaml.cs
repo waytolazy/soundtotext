@@ -267,10 +267,10 @@ public partial class MainWindow : Window
     {
         _breathePhase = 0;
         _breatheTimer?.Stop();
-        _breatheTimer = new DispatcherTimer(TimeSpan.FromMilliseconds(40), DispatcherPriority.Background, (_, _) =>
+        _breatheTimer = new DispatcherTimer(TimeSpan.FromMilliseconds(120), DispatcherPriority.Background, (_, _) =>
         {
-            _breathePhase += 0.06;
             if (_state != HudStatus.Idle || _bars.Length == 0) return;
+            _breathePhase += 0.18;
             var n = 0.5 + 0.5 * Math.Sin(_breathePhase);
             var op = 0.85 + n * 0.15;
             foreach (var b in _bars) b.Opacity = op;
@@ -300,10 +300,10 @@ public partial class MainWindow : Window
         if (_bgStop0 == null || _bgStop1 == null) return;
         _driftPhase = 0;
         _driftTimer?.Stop();
-        _driftTimer = new DispatcherTimer(TimeSpan.FromMilliseconds(80), DispatcherPriority.Background, (_, _) =>
+        _driftTimer = new DispatcherTimer(TimeSpan.FromMilliseconds(180), DispatcherPriority.Background, (_, _) =>
         {
-            _driftPhase += 0.012;
             if (_state != HudStatus.Listening && _state != HudStatus.Transcribing) return;
+            _driftPhase += 0.045;
             var hueShift = Math.Sin(_driftPhase) * 8.0;
             _bgStop0.Color = ShiftHue(Color.FromArgb(0xF5, 0x0A, 0x0A, 0x0C), hueShift, 0);
             _bgStop1.Color = ShiftHue(Color.FromArgb(0xF5, 0x02, 0x02, 0x03), -hueShift, 0);

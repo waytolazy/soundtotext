@@ -17,6 +17,7 @@ public sealed class WhisperEngine : IDisposable
     private WhisperFactory? _factory;
     private string _modelPath = "";
     private bool _gpuEnabled;
+    private readonly System.Threading.SemaphoreSlim _gate = new(1, 1);
 
     public async Task InitializeAsync(Action<string>? progress = null)
     {
@@ -75,17 +76,27 @@ public sealed class WhisperEngine : IDisposable
             .WithNoSpeechThreshold(0.5f)
             .Build();
 
+    public bool IsBusy => _gate.CurrentCount == 0;
+
     public async Task<string> TranscribeAsync(float[] samples, CancellationToken ct = default)
     {
         if (_factory == null) throw new InvalidOperationException("Model not loaded");
 
-        await using var processor = BuildProcessor();
+        await _gate.WaitAsync(ct);
+        try
+        {
+            await using var processor = BuildProcessor();
 
-        var sb = new System.Text.StringBuilder();
-        await foreach (var seg in processor.ProcessAsync(samples, ct))
-            sb.Append(seg.Text);
+            var sb = new System.Text.StringBuilder();
+            await foreach (var seg in processor.ProcessAsync(samples, ct))
+                sb.Append(seg.Text);
 
-        return Sanitize(sb.ToString());
+            return Sanitize(sb.ToString());
+        }
+        finally
+        {
+            _gate.Release();
+        }
     }
 
     private static readonly string[] Hallucinations =
