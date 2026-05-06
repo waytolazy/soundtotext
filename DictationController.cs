@@ -14,25 +14,22 @@ public sealed class DictationController
     private readonly WhisperEngine _whisper;
     private readonly KeystrokeInjector _injector;
     private readonly MainWindow _hud;
-    private readonly Func<IntPtr> _foregroundAtPress;
     private readonly object _gate = new();
 
     private bool _toggleActive;
-    private IntPtr _targetHwnd;
     private int _phrasesPending;
 
-    private readonly BlockingCollection<byte[]> _queue = new(new ConcurrentQueue<byte[]>());
+    private readonly BlockingCollection<float[]> _queue = new(new ConcurrentQueue<float[]>());
     private CancellationTokenSource? _workerCts;
     private Task? _workerTask;
 
     public DictationController(MicCapture mic, WhisperEngine whisper, KeystrokeInjector injector,
-        MainWindow hud, Func<IntPtr> foregroundAtPress)
+        MainWindow hud)
     {
         _mic = mic;
         _whisper = whisper;
         _injector = injector;
         _hud = hud;
-        _foregroundAtPress = foregroundAtPress;
         _mic.PhraseReady += OnPhraseReady;
     }
 
@@ -49,12 +46,9 @@ public sealed class DictationController
     private void StartSession()
     {
         _toggleActive = true;
-        var fg = _foregroundAtPress();
-        if (fg == IntPtr.Zero) fg = _injector.CaptureForeground();
-        _targetHwnd = fg;
-        Logger.Log($"StartSession target=0x{_targetHwnd.ToInt64():X} ({_injector.DescribeWindow(_targetHwnd)})");
+        Logger.Log("StartSession");
         _workerCts = new CancellationTokenSource();
-        _workerTask = Task.Run(() => WorkerLoop(_workerCts.Token));
+        _workerTask = Task.Run(() => WorkerLoopAsync(_workerCts.Token));
         _mic.Start();
         _hud.SetStatus(HudStatus.Listening, "Listening…");
     }
@@ -68,22 +62,22 @@ public sealed class DictationController
         _hud.SetStatus(HudStatus.Idle, _phrasesPending > 0 ? "Finishing…" : "Ready");
     }
 
-    private void OnPhraseReady(byte[] wav)
+    private void OnPhraseReady(float[] samples)
     {
         Interlocked.Increment(ref _phrasesPending);
-        _queue.Add(wav);
+        _queue.Add(samples);
     }
 
-    private void WorkerLoop(CancellationToken ct)
+    private async Task WorkerLoopAsync(CancellationToken ct)
     {
         try
         {
             while (true)
             {
-                byte[]? wav;
+                float[]? samples;
                 try
                 {
-                    if (!_queue.TryTake(out wav, 50))
+                    if (!_queue.TryTake(out samples, 50))
                     {
                         if (ct.IsCancellationRequested && _queue.Count == 0) return;
                         continue;
@@ -91,25 +85,25 @@ public sealed class DictationController
                 }
                 catch { return; }
 
-                if (wav == null) continue;
-                _ = TranscribeAndType(wav);
+                if (samples == null) continue;
+                await TranscribeAndType(samples);
             }
         }
-        catch { }
+        catch (Exception ex) { Logger.Ex("WorkerLoop", ex); }
     }
 
-    private async Task TranscribeAndType(byte[] wav)
+    private async Task TranscribeAndType(float[] samples)
     {
         try
         {
             _hud.SetStatus(HudStatus.Transcribing, "Transcribing…");
             var sw = System.Diagnostics.Stopwatch.StartNew();
-            var text = await _whisper.TranscribeAsync(wav);
-            Logger.Log($"whisper {sw.ElapsedMilliseconds}ms => '{text}'");
+            var text = await _whisper.TranscribeAsync(samples);
+            var audioMs = (int)(samples.Length / (double)MicCapture.SampleRate * 1000);
+            Logger.Log($"whisper {sw.ElapsedMilliseconds}ms (audio {audioMs}ms, x{audioMs / Math.Max(1.0, sw.ElapsedMilliseconds):F2}) => '{text}'");
             if (!string.IsNullOrWhiteSpace(text))
             {
-                await _hud.Dispatcher.InvokeAsync(() =>
-                    _injector.TypeText(text + " ", _targetHwnd));
+                _injector.TypeText(text + " ");
                 _hud.SetStatus(_toggleActive ? HudStatus.Listening : HudStatus.Idle, Trim(text));
             }
             else
@@ -119,6 +113,7 @@ public sealed class DictationController
         }
         catch (Exception ex)
         {
+            Logger.Ex("TranscribeAndType", ex);
             _hud.SetStatus(HudStatus.Error, ex.Message);
         }
         finally

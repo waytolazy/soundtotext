@@ -1,8 +1,12 @@
-<Application x:Class="SoundToText.App"
-             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+<Application xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             ShutdownMode="OnExplicitShutdown"
-             Startup="OnStartup">
+             x:Class="SoundToText.App"
+             RequestedThemeVariant="Dark">
+
+    <Application.Styles>
+        <FluentTheme />
+    </Application.Styles>
+
     <Application.Resources>
         <ResourceDictionary>
             <Color x:Key="AccentColor">#4FB1FF</Color>
@@ -11,6 +15,7 @@
             <SolidColorBrush x:Key="GlassStroke" Color="#33FFFFFF"/>
             <SolidColorBrush x:Key="TextBrush" Color="#F2FFFFFF"/>
             <SolidColorBrush x:Key="MutedBrush" Color="#99FFFFFF"/>
+            <SolidColorBrush x:Key="ErrorBrush" Color="#FF6B6B"/>
         </ResourceDictionary>
     </Application.Resources>
 </Application>

@@ -11,11 +11,7 @@ public static class Logger
 
     static Logger()
     {
-        var dir = System.IO.Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "SoundToText");
-        Directory.CreateDirectory(dir);
-        _path = System.IO.Path.Combine(dir, "log.txt");
+        _path = Path.Combine(AppPaths.LocalDataDir, "log.txt");
         try { File.WriteAllText(_path, $"=== launch {DateTime.Now:O} ===\n"); }
         catch { }
     }

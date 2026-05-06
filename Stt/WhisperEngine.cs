@@ -9,37 +9,64 @@ namespace SoundToText.Stt;
 
 public sealed class WhisperEngine : IDisposable
 {
-    private const string ModelFile = "ggml-small.en.bin";
-    private const GgmlType ModelKind = GgmlType.SmallEn;
+    private const GgmlType ModelKind = GgmlType.LargeV3Turbo;
+    private const QuantizationType ModelQuant = QuantizationType.Q5_0;
+    private const string ModelFile = "ggml-large-v3-turbo-q5_0.bin";
+    private const string ModelSizeLabel = "~600 MB";
 
     private WhisperFactory? _factory;
     private string _modelPath = "";
+    private bool _gpuEnabled;
 
     public async Task InitializeAsync(Action<string>? progress = null)
     {
-        var dir = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "SoundToText", "models");
+        var dir = Path.Combine(AppPaths.LocalDataDir, "models");
         Directory.CreateDirectory(dir);
         _modelPath = Path.Combine(dir, ModelFile);
 
         if (!File.Exists(_modelPath))
         {
-            progress?.Invoke("Downloading model (~466MB)…");
-            using var stream = await WhisperGgmlDownloader.GetGgmlModelAsync(ModelKind, QuantizationType.NoQuantization);
-            await using var fs = File.Create(_modelPath);
-            await stream.CopyToAsync(fs);
+            progress?.Invoke($"Downloading large-v3-turbo Q5_0 ({ModelSizeLabel})…");
+            using var stream = await WhisperGgmlDownloader.GetGgmlModelAsync(ModelKind, ModelQuant);
+            var tmp = _modelPath + ".part";
+            await using (var fs = File.Create(tmp))
+                await stream.CopyToAsync(fs);
+            File.Move(tmp, _modelPath, overwrite: true);
         }
 
         progress?.Invoke("Loading model…");
-        _factory = WhisperFactory.FromPath(_modelPath);
+
+        _gpuEnabled = OperatingSystem.IsMacOS() || OperatingSystem.IsWindows();
+        try
+        {
+            _factory = WhisperFactory.FromPath(_modelPath, new WhisperFactoryOptions { UseGpu = _gpuEnabled });
+            Logger.Log($"Whisper factory loaded (UseGpu={_gpuEnabled})");
+        }
+        catch (Exception ex) when (_gpuEnabled)
+        {
+            Logger.Ex("GPU init failed, falling back to CPU", ex);
+            _gpuEnabled = false;
+            _factory = WhisperFactory.FromPath(_modelPath, new WhisperFactoryOptions { UseGpu = false });
+        }
+
+        progress?.Invoke("Warming up…");
+        await PrewarmAsync();
+        progress?.Invoke($"Ready ({(_gpuEnabled ? "GPU" : "CPU")})");
     }
 
-    public async Task<string> TranscribeAsync(byte[] wav, CancellationToken ct = default)
+    private async Task PrewarmAsync()
     {
-        if (_factory == null) throw new InvalidOperationException("Model not loaded");
+        try
+        {
+            var silence = new float[16000];
+            await using var processor = BuildProcessor();
+            await foreach (var _ in processor.ProcessAsync(silence)) { }
+        }
+        catch (Exception ex) { Logger.Ex("Prewarm", ex); }
+    }
 
-        await using var processor = _factory.CreateBuilder()
+    private WhisperProcessor BuildProcessor() =>
+        _factory!.CreateBuilder()
             .WithLanguage("en")
             .WithThreads(Math.Max(2, Environment.ProcessorCount - 1))
             .WithNoContext()
@@ -48,13 +75,16 @@ public sealed class WhisperEngine : IDisposable
             .WithNoSpeechThreshold(0.5f)
             .Build();
 
-        await using var ms = new MemoryStream(wav);
+    public async Task<string> TranscribeAsync(float[] samples, CancellationToken ct = default)
+    {
+        if (_factory == null) throw new InvalidOperationException("Model not loaded");
+
+        await using var processor = BuildProcessor();
 
         var sb = new System.Text.StringBuilder();
-        await foreach (var seg in processor.ProcessAsync(ms, ct))
-        {
+        await foreach (var seg in processor.ProcessAsync(samples, ct))
             sb.Append(seg.Text);
-        }
+
         return Sanitize(sb.ToString());
     }
 

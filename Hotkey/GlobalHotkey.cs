@@ -1,104 +1,70 @@
 using System;
-using System.Diagnostics;
-using System.Runtime.InteropServices;
-using System.Windows;
-using System.Windows.Interop;
+using System.Threading.Tasks;
+using SharpHook;
+using SharpHook.Native;
 
 namespace SoundToText.Hotkey;
 
 public sealed class GlobalHotkey : IDisposable
 {
-    private const int WM_HOTKEY = 0x0312;
-    private const int HOTKEY_ID = 0xB0CA;
-
-    private const uint MOD_ALT = 0x1;
-    private const uint MOD_CONTROL = 0x2;
-    private const uint MOD_SHIFT = 0x4;
-    private const uint MOD_WIN = 0x8;
-
-    private readonly Window _owner;
-    private IntPtr _hwnd;
-    private HwndSource? _src;
-    private bool _registered;
-    public string ActiveBindingLabel { get; private set; } = "";
-
-    private static readonly (uint mods, uint vk, string label)[] BindingCandidates =
-    {
-        (MOD_CONTROL | MOD_SHIFT | MOD_ALT, 0x20, "Ctrl+Shift+Alt+Space"),
-    };
-
-    private readonly Stopwatch _sinceLastFire = new();
+    private TaskPoolGlobalHook? _hook;
+    private Task? _hookTask;
+    private long _lastFireMs;
     private const int DebounceMs = 250;
 
     public event Action? Tap;
-
-    public IntPtr LastForegroundAtPress { get; private set; }
-
-    [DllImport("user32.dll")]
-    private static extern IntPtr GetForegroundWindow();
-
-    public GlobalHotkey(Window owner)
-    {
-        _owner = owner;
-    }
+    public string ActiveBindingLabel { get; private set; } = "";
 
     public void Register()
     {
-        var helper = new WindowInteropHelper(_owner);
-        _hwnd = helper.EnsureHandle();
-        _src = HwndSource.FromHwnd(_hwnd);
-        _src!.AddHook(WndProc);
+        _hook = new TaskPoolGlobalHook();
+        _hook.KeyPressed += OnKeyPressed;
+        _hook.HookEnabled += (_, _) => Logger.Log("uiohook enabled (events flowing)");
+        _hook.HookDisabled += (_, _) => Logger.Log("uiohook disabled");
 
-        var tried = new System.Collections.Generic.List<string>();
-        foreach (var (mods, vk, label) in BindingCandidates)
+        _hookTask = _hook.RunAsync();
+        _hookTask.ContinueWith(t =>
         {
-            if (RegisterHotKey(_hwnd, HOTKEY_ID, mods, vk))
-            {
-                _registered = true;
-                ActiveBindingLabel = label;
-                return;
-            }
-            tried.Add(label);
-        }
-        throw new InvalidOperationException(
-            "All candidate hotkeys are in use. Tried: " + string.Join(", ", tried));
+            if (t.IsFaulted) Logger.Ex("uiohook task faulted", t.Exception!.GetBaseException());
+            else if (t.IsCompletedSuccessfully) Logger.Log("uiohook task ended");
+        }, TaskScheduler.Default);
+
+        ActiveBindingLabel = OperatingSystem.IsMacOS()
+            ? "Ctrl+Option+Shift+Space"
+            : "Ctrl+Shift+Alt+Space";
     }
 
-    private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
+    private void OnKeyPressed(object? sender, KeyboardHookEventArgs e)
     {
-        if (msg == WM_HOTKEY && wParam.ToInt32() == HOTKEY_ID)
-        {
-            OnHotkeyPressed();
-            handled = true;
-        }
-        return IntPtr.Zero;
-    }
+        if (e.Data.KeyCode != KeyCode.VcSpace) return;
 
-    private void OnHotkeyPressed()
-    {
-        if (_sinceLastFire.IsRunning && _sinceLastFire.ElapsedMilliseconds < DebounceMs) return;
-        _sinceLastFire.Restart();
+        var mask = e.RawEvent.Mask;
+        bool ctrl  = (mask & ModifierMask.Ctrl)  != 0;
+        bool shift = (mask & ModifierMask.Shift) != 0;
+        bool alt   = (mask & ModifierMask.Alt)   != 0;
 
-        var fg = GetForegroundWindow();
-        var ownHwnd = new WindowInteropHelper(_owner).Handle;
-        if (fg != IntPtr.Zero && fg != ownHwnd) LastForegroundAtPress = fg;
+        if (!(ctrl && shift && alt)) return;
 
-        Tap?.Invoke();
+        var now = Environment.TickCount64;
+        if (now - _lastFireMs < DebounceMs) return;
+        _lastFireMs = now;
+
+        try { Tap?.Invoke(); }
+        catch (Exception ex) { Logger.Ex("Hotkey.Tap", ex); }
     }
 
     public void Dispose()
     {
-        if (_registered && _hwnd != IntPtr.Zero)
+        try
         {
-            UnregisterHotKey(_hwnd, HOTKEY_ID);
-            _registered = false;
+            if (_hook != null)
+            {
+                _hook.KeyPressed -= OnKeyPressed;
+                _hook.Dispose();
+            }
         }
-        _src?.RemoveHook(WndProc);
+        catch { }
+        _hook = null;
+        _hookTask = null;
     }
-
-    [DllImport("user32.dll", SetLastError = true)]
-    private static extern bool RegisterHotKey(IntPtr hWnd, int id, uint fsModifiers, uint vk);
-
-    [DllImport("user32.dll", SetLastError = true)]
-    private static extern bool UnregisterHotKey(IntPtr hWnd, int id);
 }
