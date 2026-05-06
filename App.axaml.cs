@@ -56,7 +56,7 @@ public partial class App : Application
             await _whisper.InitializeAsync(p => _hud.SetStatus(HudStatus.Idle, p));
 
             _hotkey = new GlobalHotkey();
-            _controller = new DictationController(_mic, _whisper, _injector, _hud);
+            _controller = new DictationController(_mic, _whisper, _injector, _hud, _tray);
             _mic.LevelUpdated += level => _hud!.OnLevel(level);
 
             _hotkey.Tap += () => _ = _controller.ToggleAsync();

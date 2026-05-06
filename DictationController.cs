@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using SoundToText.Audio;
 using SoundToText.Input;
 using SoundToText.Stt;
+using SoundToText.Tray;
 
 namespace SoundToText;
 
@@ -14,6 +15,7 @@ public sealed class DictationController
     private readonly WhisperEngine _whisper;
     private readonly KeystrokeInjector _injector;
     private readonly MainWindow _hud;
+    private readonly TrayManager? _tray;
     private readonly object _gate = new();
 
     private bool _toggleActive;
@@ -24,12 +26,13 @@ public sealed class DictationController
     private Task? _workerTask;
 
     public DictationController(MicCapture mic, WhisperEngine whisper, KeystrokeInjector injector,
-        MainWindow hud)
+        MainWindow hud, TrayManager? tray = null)
     {
         _mic = mic;
         _whisper = whisper;
         _injector = injector;
         _hud = hud;
+        _tray = tray;
         _mic.PhraseReady += OnPhraseReady;
     }
 
@@ -59,6 +62,7 @@ public sealed class DictationController
         _mic.Stop();
         _workerCts?.Cancel();
         _workerCts = null;
+        _tray?.StopAnimation();
         _hud.SetStatus(HudStatus.Idle, _phrasesPending > 0 ? "Finishing…" : "Ready");
     }
 
@@ -97,6 +101,7 @@ public sealed class DictationController
         try
         {
             _hud.SetStatus(HudStatus.Transcribing, "Transcribing…");
+            _tray?.StartAnimation();
             var sw = System.Diagnostics.Stopwatch.StartNew();
             var text = await _whisper.TranscribeAsync(samples);
             var audioMs = (int)(samples.Length / (double)MicCapture.SampleRate * 1000);
@@ -105,6 +110,7 @@ public sealed class DictationController
             {
                 _injector.TypeText(text + " ");
                 _hud.SetStatus(_toggleActive ? HudStatus.Listening : HudStatus.Idle, Trim(text));
+                _hud.OnPhraseCommitted();
             }
             else
             {
@@ -119,6 +125,7 @@ public sealed class DictationController
         finally
         {
             Interlocked.Decrement(ref _phrasesPending);
+            if (_phrasesPending == 0 && !_toggleActive) _tray?.StopAnimation();
         }
     }
 
